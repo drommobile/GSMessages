@@ -158,8 +158,6 @@ public class GSMessage {
     fileprivate var messageHeight: CGFloat { return offsetY + height }
 
     init(text: String, type: GSMessageType, options: [GSMessageOption]?, inView: UIView, inViewController: UIViewController?) {
-
-        var inView = inView
         
         switch type {
         case .success:  backgroundColor = GSMessage.successBackgroundColor
@@ -183,12 +181,6 @@ public class GSMessage {
                 case let .textAlignment(value): textAlignment = value
                 case let .textNumberOfLines(value): textNumberOfLines = value
                 }
-            }
-        }
-
-        if inViewController is UITableViewController {
-            if let lastWindow = UIApplication.shared.windows.last {
-                inView = lastWindow as UIView
             }
         }
 
