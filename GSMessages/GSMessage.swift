@@ -45,8 +45,8 @@ extension UIViewController {
         GSMessage.showMessageAddedTo(text, type: type, options: options, inView: view, inViewController: self)
     }
 
-    public func hideMessage() {
-        view.hideMessage()
+    public func hideMessage(animated: Bool = true) {
+        view.hideMessage(animated: animated)
     }
 
 }
@@ -57,13 +57,13 @@ extension UIView {
         GSMessage.showMessageAddedTo(text, type: type, options: options, inView: self, inViewController: nil)
     }
 
-    public func hideMessage() {
-        installedMessage?.hide()
+    public func hideMessage(animated: Bool = true) {
+        installedMessage?.hide(animated: animated)
     }
 
 }
 
-public class GSMessage {
+public class GSMessage: NSObject {
 
     public static var font : UIFont = UIFont.systemFont(ofSize: 14)
     public static var successBackgroundColor : UIColor = UIColor(red: 142.0/255, green: 183.0/255, blue: 64.0/255,  alpha: 0.95)
@@ -71,19 +71,19 @@ public class GSMessage {
     public static var errorBackgroundColor   : UIColor = UIColor(red: 219.0/255, green: 36.0/255,  blue: 27.0/255,  alpha: 0.70)
     public static var infoBackgroundColor    : UIColor = UIColor(red: 44.0/255,  green: 187.0/255, blue: 255.0/255, alpha: 0.90)
 
-    class func showMessageAddedTo(_ text: String, type: GSMessageType, options: [GSMessageOption]?, inView: UIView, inViewController: UIViewController?) {
+    public class func showMessageAddedTo(_ text: String, type: GSMessageType, options: [GSMessageOption]?, inView: UIView, inViewController: UIViewController?) {
         if inView.installedMessage != nil && inView.uninstallMessage == nil { inView.hideMessage() }
         if inView.installedMessage == nil {
             GSMessage(text: text, type: type, options: options, inView: inView, inViewController: inViewController).show()
         }
     }
 
-    func show() {
+    public func show() {
 
         if inView?.installedMessage != nil { return }
 
         inView?.installedMessage = self
-        inView?.addSubview(messageView)
+        inView?.addSubview(containerView)
         
         updateFrames()
 
@@ -102,16 +102,21 @@ public class GSMessage {
             UIView.animate(withDuration: animationDuration, animations: { self.messageView.transform = CGAffineTransform(translationX: 0, y: 0) }) 
         }
 
-        if autoHide { GS_GCDAfter(autoHideDelay) { self.hide() } }
+        if autoHide { GS_GCDAfter(autoHideDelay) { self.hide(animated: true) } }
 
     }
 
-    func hide() {
+    public func hide(animated: Bool) {
 
         if inView?.installedMessage !== self || inView?.uninstallMessage != nil { return }
 
         inView?.uninstallMessage = self
         inView?.installedMessage = nil
+        
+        guard animated else {
+            removeFromSuperview()
+            return
+        }
 
         if animation == .fade {
             UIView.animate(withDuration: self.animationDuration,
@@ -129,35 +134,40 @@ public class GSMessage {
 
         else if animation == .slide && position == .bottom {
             UIView.animate(withDuration: self.animationDuration,
-                animations: { [weak self] in if let this = self { this.messageView.transform = CGAffineTransform(translationX: 0, y: this.height) } },
+                animations: { [weak self] in if let this = self { this.messageView.transform = CGAffineTransform(translationX: 0, y: this.messageHeight) } },
                 completion: { [weak self] finished in self?.removeFromSuperview() }
             )
         }
 
     }
 
-    fileprivate(set) weak var inView: UIView!
-    fileprivate(set) weak var inViewController: UIViewController?
-    fileprivate(set) var messageView: UIView!
-    fileprivate(set) var messageText: UILabel!
-    fileprivate(set) var animation: GSMessageAnimation = .slide
-    fileprivate(set) var animationDuration: TimeInterval = 0.3
-    fileprivate(set) var autoHide: Bool = true
-    fileprivate(set) var autoHideDelay: Double = 3
-    fileprivate(set) var backgroundColor: UIColor!
-    fileprivate(set) var height: CGFloat = 44
-    fileprivate(set) var hideOnTap: Bool = true
-    fileprivate(set) var offsetY: CGFloat = 0
-    fileprivate(set) var position: GSMessagePosition = .top
-    fileprivate(set) var textColor: UIColor = UIColor.white
-    fileprivate(set) var textPadding: CGFloat = 30
-    fileprivate(set) var textAlignment: NSTextAlignment = .center
-    fileprivate(set) var textNumberOfLines: Int = 1
-    fileprivate(set) var y: CGFloat = 0
+    public fileprivate(set) weak var inView: UIView!
+    public fileprivate(set) weak var inViewController: UIViewController?
+    
+    public fileprivate(set) var containerView = UIView()
+    public fileprivate(set) var messageView = UIView()
+    public fileprivate(set) var messageText = UILabel()
+    
+    public fileprivate(set) var animation: GSMessageAnimation = .slide
+    public fileprivate(set) var animationDuration: TimeInterval = 0.3
+    public fileprivate(set) var autoHide: Bool = true
+    public fileprivate(set) var autoHideDelay: Double = 3
+    public fileprivate(set) var backgroundColor: UIColor!
+    public fileprivate(set) var height: CGFloat = 44
+    public fileprivate(set) var hideOnTap: Bool = true
+    public fileprivate(set) var offsetY: CGFloat = 0
+    public fileprivate(set) var position: GSMessagePosition = .top
+    public fileprivate(set) var textColor: UIColor = UIColor.white
+    public fileprivate(set) var textPadding: CGFloat = 30
+    public fileprivate(set) var textAlignment: NSTextAlignment = .center
+    public fileprivate(set) var textNumberOfLines: Int = 1
+    public fileprivate(set) var y: CGFloat = 0
+    
+    fileprivate var observingTableViewController: UITableViewController?
 
-    fileprivate var messageHeight: CGFloat { return offsetY + height }
+    public var messageHeight: CGFloat { return abs(offsetY) + height }
 
-    init(text: String, type: GSMessageType, options: [GSMessageOption]?, inView: UIView, inViewController: UIViewController?) {
+    public init(text: String, type: GSMessageType, options: [GSMessageOption]?, inView: UIView, inViewController: UIViewController?) {
         
         switch type {
         case .success:  backgroundColor = GSMessage.successBackgroundColor
@@ -183,11 +193,12 @@ public class GSMessage {
                 }
             }
         }
+        
+        super.init()
 
-        messageView = UIView()
         messageView.backgroundColor = backgroundColor
+        containerView.addSubview(messageView)
 
-        messageText = UILabel()
         messageText.text = text
         messageText.font = GSMessage.font
         messageText.textColor = textColor
@@ -196,7 +207,7 @@ public class GSMessage {
         messageView.addSubview(messageText)
         
         if textNumberOfLines == 0 {
-            height = max(text.boundingRect(with: CGSize(width: inView.frame.size.width - textPadding * 2, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: [NSFontAttributeName: GSMessage.font], context: nil).height + (height - " ".boundingRect(with: CGSize(width: inView.frame.size.width, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: [NSFontAttributeName: GSMessage.font], context: nil).height), height)
+          height = max(text.boundingRect(with: CGSize(width: inView.frame.size.width - textPadding * 2, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: [NSAttributedStringKey.font: GSMessage.font], context: nil).height + (height - " ".boundingRect(with: CGSize(width: inView.frame.size.width, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: [NSAttributedStringKey.font: GSMessage.font], context: nil).height), height)
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(updateFrames), name: NSNotification.Name.UIDeviceOrientationDidChange, object: nil)
@@ -213,11 +224,15 @@ public class GSMessage {
     }
     
     deinit {
+        if let tvc = observingTableViewController {
+            tvc.tableView.removeObserver(self, forKeyPath: "contentOffset")
+            observingTableViewController = nil
+        }
         NotificationCenter.default.removeObserver(self)
     }
 
     @objc fileprivate func handleTap(_ tapGesture: UITapGestureRecognizer) {
-        hide()
+        hide(animated: true)
     }
     
     @objc fileprivate func updateFrames() {
@@ -227,29 +242,52 @@ public class GSMessage {
         
         switch position {
         case .top:
-            if let viewController = inViewController {
-                if viewController.edgesForExtendedLayout == [] {
-                    offsetY = 0
+            if let vc = inViewController {
+                if #available(iOS 11.0, *) {
+                    offsetY = vc.view.safeAreaInsets.top
                 } else {
-                    let navigation = viewController.navigationController ?? (viewController as? UINavigationController)
-                    let navigationBarHidden = (navigation?.isNavigationBarHidden ?? true)
-                    let navigationBarTranslucent = (navigation?.navigationBar.isTranslucent ?? false)
-                    let navigationBarHeight = (navigation?.navigationBar.frame.size.height ?? 44)
-                    let statusBarHidden = UIApplication.shared.isStatusBarHidden
-                    if !navigationBarHidden && navigationBarTranslucent && !statusBarHidden { offsetY += 20 }
-                    if !navigationBarHidden && navigationBarTranslucent { offsetY += navigationBarHeight }
-                    if (navigationBarHidden && !statusBarHidden) { offsetY += 20 }
+                    if vc.edgesForExtendedLayout == [] {
+                        offsetY = 0
+                    } else {
+                        let statusBarHeight = UIApplication.shared.statusBarFrame.height
+                        let nav = vc.navigationController ?? (vc as? UINavigationController)
+                        let isNavBarHidden = (nav?.isNavigationBarHidden ?? true)
+                        let isNavBarTranslucent = (nav?.navigationBar.isTranslucent ?? false)
+                        let navBarHeight = (nav?.navigationBar.frame.size.height ?? 44)
+                        let isStatusBarHidden = UIApplication.shared.isStatusBarHidden
+                        if !isNavBarHidden && isNavBarTranslucent && !isStatusBarHidden { offsetY += statusBarHeight }
+                        if !isNavBarHidden && isNavBarTranslucent { offsetY += navBarHeight }
+                        if (isNavBarHidden && !isStatusBarHidden) { offsetY += statusBarHeight }
+                    }
                 }
             }
             y = max(0 - inView.frame.origin.y, 0)
         case .bottom:
             y = inView.bounds.size.height - height
+            
+            if let vc = inViewController {
+                if #available(iOS 11.0, *) {
+                    offsetY = -vc.view.safeAreaInsets.bottom
+                    y = inView.bounds.size.height - height + offsetY
+                }
+            }
         }
         
-        messageView.frame = CGRect(x: 0, y: y, width: inView.bounds.size.width, height: messageHeight)
-        messageText.frame = CGRect(x: textPadding, y: offsetY, width: messageView.bounds.size.width - textPadding * 2, height: height)
+        let contentOffsetY = observingTableViewController?.tableView.contentOffset.y ?? 0
+        
+        containerView.frame = CGRect(x: 0, y: y + contentOffsetY, width: inView.bounds.size.width, height: messageHeight)
+        messageView.frame = containerView.bounds
+        messageText.frame = CGRect(x: textPadding, y: max(0, offsetY), width: messageView.bounds.size.width - textPadding * 2, height: height)
     }
     
+    fileprivate func removeFromSuperview() {
+        containerView.removeFromSuperview()
+        inView?.uninstallMessage = nil
+    }
+
+}
+
+extension GSMessage {
     @objc fileprivate func keyboardWillShow(notification: NSNotification) {
         guard let inView = self.inView else { return }
         
@@ -267,12 +305,20 @@ public class GSMessage {
             }
         }
     }
+}
 
-    fileprivate func removeFromSuperview() {
-        messageView.removeFromSuperview()
-        inView?.uninstallMessage = nil
+extension GSMessage {
+    public override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+        guard context == &observerContext else {
+            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+            return
+        }
+
+        if keyPath == "contentOffset" {
+            guard let contentOffset = (change?[.newKey] as? NSValue)?.cgPointValue else { return }
+            containerView.frame.origin.y = y + contentOffset.y
+        }
     }
-
 }
 
 extension UIView {
@@ -291,6 +337,7 @@ extension UIView {
 
 private var installedMessageKey = ""
 private var uninstallMessageKey = ""
+private var observerContext = ""
 
 private func GS_GCDAfter(_ delay:Double, closure:@escaping ()->()) {
     DispatchQueue.main.asyncAfter(
